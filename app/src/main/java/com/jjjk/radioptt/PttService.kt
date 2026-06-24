@@ -140,20 +140,16 @@ class PttService : Service() {
         }
     }
 
-    // Motorola-style two-tone roger beep: low chirp then high chirp (1400 Hz → 2100 Hz).
-    // AudioTrack routes through VOICE_CALL so it plays through the same speaker as PTT audio.
+    // CB-style descending bloop: sweeps from 1050 Hz down to 600 Hz over 220 ms.
     private fun playRogerBeep() {
         scope.launch(Dispatchers.IO) {
             try {
                 val rate = 44100
-                val tone1 = synthTone(1400.0, 0.090, rate)
-                val gap   = ShortArray((rate * 0.025).toInt())
-                val tone2 = synthTone(2100.0, 0.090, rate)
-                val pcm   = tone1 + gap + tone2
+                val pcm  = synthSweep(1050.0, 600.0, 0.220, rate, 0.30)
                 val track = AudioTrack.Builder()
                     .setAudioAttributes(
                         AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
                             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                             .build()
                     )
@@ -169,24 +165,26 @@ class PttService : Service() {
                     .build()
                 track.write(pcm, 0, pcm.size)
                 track.play()
-                delay(250)
+                delay(300)
                 track.stop()
                 track.release()
             } catch (_: Exception) {}
         }
     }
 
-    // Synthesise a single sine-wave tone with 10 ms fade-in/out to avoid clicks.
-    private fun synthTone(freq: Double, durSec: Double, rate: Int): ShortArray {
-        val n = (rate * durSec).toInt()
-        val fade = (rate * 0.010).toInt()
+    // Linear frequency chirp with phase-accurate accumulation and 15 ms fade-in/out.
+    private fun synthSweep(f0: Double, f1: Double, durSec: Double, rate: Int, amp: Double): ShortArray {
+        val n    = (rate * durSec).toInt()
+        val fade = (rate * 0.015).toInt()
         return ShortArray(n) { i ->
-            val env = when {
-                i < fade        -> i.toDouble() / fade
-                i > n - fade    -> (n - i).toDouble() / fade
-                else            -> 1.0
+            val t     = i.toDouble() / rate
+            val phase = 2.0 * PI * (f0 * t + (f1 - f0) * t * t / (2.0 * durSec))
+            val env   = when {
+                i < fade     -> i.toDouble() / fade
+                i > n - fade -> (n - i).toDouble() / fade
+                else         -> 1.0
             }
-            (sin(2.0 * PI * freq * i / rate) * 32767 * 0.75 * env).toInt().toShort()
+            (sin(phase) * 32767 * amp * env).toInt().toShort()
         }
     }
 

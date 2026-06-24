@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.IBinder
 import android.view.KeyEvent
@@ -78,6 +80,9 @@ class MainActivity : AppCompatActivity() {
         val imei = ImeiHelper.read(this)
         if (imei.isNotEmpty()) imeiLabel.text = "IMEI: $imei"
 
+        // Circular button — red at rest, green while transmitting
+        pttButton.background = pttButtonDrawable("#c0392b")
+
         channelListener = object : AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent: AdapterView<*>?) {}
             override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
@@ -91,8 +96,14 @@ class MainActivity : AppCompatActivity() {
 
         pttButton.setOnTouchListener { _, event ->
             when (event.action) {
-                MotionEvent.ACTION_DOWN -> pttService?.setTransmitting(true)
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> pttService?.setTransmitting(false)
+                MotionEvent.ACTION_DOWN -> {
+                    pttService?.setTransmitting(true)
+                    pttButton.background = pttButtonDrawable("#22c55e")
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    pttService?.setTransmitting(false)
+                    pttButton.background = pttButtonDrawable("#c0392b")
+                }
             }
             true
         }
@@ -200,6 +211,13 @@ class MainActivity : AppCompatActivity() {
             p.getString(SettingsActivity.KEY_SERVER_URL, "") ?: "",
             p.getString(SettingsActivity.KEY_DEVICE_KEY, "") ?: ""
         )
+    }
+
+    private fun pttButtonDrawable(hex: String): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.parseColor(hex))
+        }
     }
 
     override fun onDestroy() {
