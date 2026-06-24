@@ -6,8 +6,12 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioFormat
 import android.media.AudioManager
-import android.media.ToneGenerator
+import android.media.AudioTrack
+import kotlin.math.PI
+import kotlin.math.sin
 import android.os.Binder
 import android.os.IBinder
 import android.os.Looper
@@ -127,18 +131,62 @@ class PttService : Service() {
                 if (on) {
                     notify("▶ TRANSMITTING")
                 } else {
-                    // Roger beep on PTT release.
-                    try {
-                        val tg = ToneGenerator(AudioManager.STREAM_VOICE_CALL, 90)
-                        tg.startTone(ToneGenerator.TONE_PROP_BEEP, 160)
-                        delay(220)
-                        tg.release()
-                    } catch (_: Exception) {}
+                    playRogerBeep()
                     notify(idleStatus)
                 }
             } catch (e: Exception) {
                 notify("Mic error: ${e.message}")
             }
+        }
+    }
+
+    // Motorola-style two-tone roger beep: low chirp then high chirp (1400 Hz → 2100 Hz).
+    // AudioTrack routes through VOICE_CALL so it plays through the same speaker as PTT audio.
+    private fun playRogerBeep() {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val rate = 44100
+                val tone1 = synthTone(1400.0, 0.090, rate)
+                val gap   = ShortArray((rate * 0.025).toInt())
+                val tone2 = synthTone(2100.0, 0.090, rate)
+                val pcm   = tone1 + gap + tone2
+                val track = AudioTrack.Builder()
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build()
+                    )
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setSampleRate(rate)
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .build()
+                    )
+                    .setBufferSizeInBytes(pcm.size * 2)
+                    .setTransferMode(AudioTrack.MODE_STATIC)
+                    .build()
+                track.write(pcm, 0, pcm.size)
+                track.play()
+                delay(250)
+                track.stop()
+                track.release()
+            } catch (_: Exception) {}
+        }
+    }
+
+    // Synthesise a single sine-wave tone with 10 ms fade-in/out to avoid clicks.
+    private fun synthTone(freq: Double, durSec: Double, rate: Int): ShortArray {
+        val n = (rate * durSec).toInt()
+        val fade = (rate * 0.010).toInt()
+        return ShortArray(n) { i ->
+            val env = when {
+                i < fade        -> i.toDouble() / fade
+                i > n - fade    -> (n - i).toDouble() / fade
+                else            -> 1.0
+            }
+            (sin(2.0 * PI * freq * i / rate) * 32767 * 0.75 * env).toInt().toShort()
         }
     }
 
