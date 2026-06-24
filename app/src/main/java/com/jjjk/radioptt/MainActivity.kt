@@ -152,6 +152,7 @@ class MainActivity : AppCompatActivity() {
         statusText.text = "Connecting…"
         pttService?.start(url, key) { status -> runOnUiThread { statusText.text = status } }
         loadChannels()
+        startChannelPolling()
     }
 
     private fun loadChannels() {
@@ -159,17 +160,26 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val list = service.fetchChannels()
+                if (list == channels) return@launch  // no change, skip redraw
                 channels = list
                 val adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, list.map { it.name })
                 adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
                 spinnerReady = false
                 channelSpinner.adapter = adapter
-                // Pre-select the device's currently assigned channel if known
-                val currentChannelName = statusText.text.toString().substringAfter("Connected · ", "")
+                val currentChannelName = statusText.text.toString().substringAfterLast("· ", "")
                 val idx = list.indexOfFirst { it.name == currentChannelName }
                 if (idx >= 0) channelSpinner.setSelection(idx)
                 spinnerReady = true
             } catch (_: Exception) {}
+        }
+    }
+
+    private fun startChannelPolling() {
+        lifecycleScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(30_000)
+                loadChannels()
+            }
         }
     }
 
