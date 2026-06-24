@@ -33,6 +33,7 @@ class PttService : Service() {
     private var deviceKey = ""
     private var statusCallback: ((String) -> Unit)? = null
     private var started = false
+    var currentChannelId: String = ""
 
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -127,15 +128,14 @@ class PttService : Service() {
         scope.launch {
             try {
                 notify("Connecting…")
-                val (token, livekitUrl, deviceName, channelName) = fetchToken()
-                // Route audio to loudspeaker, not earpiece.
+                val result = fetchToken()
+                currentChannelId = result.channelId
                 val am = getSystemService(AudioManager::class.java)
                 am.mode = AudioManager.MODE_IN_COMMUNICATION
                 am.isSpeakerphoneOn = true
-                room.connect(url = livekitUrl, token = token)
-                // Start muted — only transmit while PTT is held.
-                room.localParticipant.setMicrophoneEnabled(false)
-                notify("$deviceName · $channelName")
+                room.connect(url = result.livekitUrl, token = result.token)
+                // LiveKit starts with mic unpublished — no need to setMicrophoneEnabled(false)
+                notify("${result.deviceName} · ${result.channelName}")
             } catch (e: Exception) {
                 notify("Failed: ${e.message}")
             }
@@ -171,7 +171,7 @@ class PttService : Service() {
         } catch (_: Exception) {}
     }
 
-    data class TokenResult(val token: String, val livekitUrl: String, val deviceName: String, val channelName: String)
+    data class TokenResult(val token: String, val livekitUrl: String, val deviceName: String, val channelName: String, val channelId: String)
 
     private suspend fun fetchToken(): TokenResult = withContext(Dispatchers.IO) {
         val conn = URL("$serverUrl/api/devices/token").openConnection() as HttpURLConnection
@@ -183,11 +183,13 @@ class PttService : Service() {
         val body = (if (code in 200..299) conn.inputStream else conn.errorStream).bufferedReader().readText()
         if (code !in 200..299) throw RuntimeException(JSONObject(body).optString("error", "HTTP $code"))
         val json = JSONObject(body)
+        val ch = json.getJSONObject("channel")
         TokenResult(
             token = json.getString("token"),
             livekitUrl = json.getString("livekitUrl"),
             deviceName = json.optString("deviceName", deviceKey),
-            channelName = json.getJSONObject("channel").getString("name"),
+            channelName = ch.getString("name"),
+            channelId = ch.getString("id"),
         )
     }
 

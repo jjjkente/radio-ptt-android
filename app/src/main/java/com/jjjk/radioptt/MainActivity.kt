@@ -80,6 +80,9 @@ class MainActivity : AppCompatActivity() {
             override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
                 if (!spinnerReady) return
                 val selected = channels.getOrNull(position) ?: return
+                val service = pttService ?: return
+                // Skip if already on this channel — guards against spinner initialisation firing
+                if (selected.id == service.currentChannelId) return
                 pttService?.switchChannel(selected.id) { status -> runOnUiThread { statusText.text = status } }
             }
         }
@@ -166,10 +169,11 @@ class MainActivity : AppCompatActivity() {
                 adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
                 spinnerReady = false
                 channelSpinner.adapter = adapter
-                val currentChannelName = statusText.text.toString().substringAfterLast("· ", "")
-                val idx = list.indexOfFirst { it.name == currentChannelName }
+                val curId = pttService?.currentChannelId ?: ""
+                val idx = list.indexOfFirst { it.id == curId }
                 if (idx >= 0) channelSpinner.setSelection(idx)
-                spinnerReady = true
+                // Defer spinnerReady so onItemSelected from adapter/selection set fires first
+                channelSpinner.post { spinnerReady = true }
             } catch (_: Exception) {}
         }
     }
