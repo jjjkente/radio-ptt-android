@@ -14,7 +14,8 @@
 
     <application
         android:allowBackup="false"
-        android:label="JJJK Radio PTT"
+        android:label="JJJK POC"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.RadioPtt">
 
         <activity
