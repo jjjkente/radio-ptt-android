@@ -138,11 +138,13 @@ class PttService : Service() {
                 notify("Connecting…")
                 val result = fetchToken()
                 currentChannelId = result.channelId
+                room.connect(url = result.livekitUrl, token = result.token)
+                // LiveKit's internal AudioSwitch resets speakerphone ~350ms after connect.
+                // Wait for it to settle, then force speaker output.
+                delay(600)
                 val am = getSystemService(AudioManager::class.java)
                 am.mode = AudioManager.MODE_IN_COMMUNICATION
                 am.isSpeakerphoneOn = true
-                room.connect(url = result.livekitUrl, token = result.token)
-                // LiveKit starts with mic unpublished — no need to setMicrophoneEnabled(false)
                 notify("${result.deviceName} · ${result.channelName}")
             } catch (e: Exception) {
                 notify("Failed: ${e.message}")
