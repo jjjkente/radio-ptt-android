@@ -12,17 +12,25 @@ import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
+import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.Spinner
+import android.widget.AdapterView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
     private var pttService: PttService? = null
     private var serviceBound = false
     private lateinit var statusText: TextView
+    private lateinit var channelSpinner: Spinner
+    private var channels: List<PttService.Channel> = emptyList()
+    private var spinnerReady = false
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
@@ -61,7 +69,17 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         statusText = findViewById(R.id.statusText)
+        channelSpinner = findViewById(R.id.channelSpinner)
         val pttButton = findViewById<Button>(R.id.pttButton)
+
+        channelSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+            override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                if (!spinnerReady) return
+                val selected = channels.getOrNull(position) ?: return
+                pttService?.switchChannel(selected.id) { status -> runOnUiThread { statusText.text = status } }
+            }
+        }
 
         pttButton.setOnTouchListener { _, event ->
             when (event.action) {
@@ -130,6 +148,26 @@ class MainActivity : AppCompatActivity() {
         if (url.isEmpty() || key.isEmpty()) return
         statusText.text = "Connecting…"
         pttService?.start(url, key) { status -> runOnUiThread { statusText.text = status } }
+        loadChannels()
+    }
+
+    private fun loadChannels() {
+        val service = pttService ?: return
+        lifecycleScope.launch {
+            try {
+                val list = service.fetchChannels()
+                channels = list
+                val adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, list.map { it.name })
+                adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                spinnerReady = false
+                channelSpinner.adapter = adapter
+                // Pre-select the device's currently assigned channel if known
+                val currentChannelName = statusText.text.toString().substringAfter("Connected · ", "")
+                val idx = list.indexOfFirst { it.name == currentChannelName }
+                if (idx >= 0) channelSpinner.setSelection(idx)
+                spinnerReady = true
+            } catch (_: Exception) {}
+        }
     }
 
     private fun loadPrefs(): Pair<String, String> {

@@ -70,6 +70,48 @@ class PttService : Service() {
         start(serverUrl, deviceKey, onStatus)
     }
 
+    data class Channel(val id: String, val name: String)
+
+    suspend fun fetchChannels(): List<Channel> = withContext(Dispatchers.IO) {
+        val conn = URL("$serverUrl/api/channels/available").openConnection() as HttpURLConnection
+        conn.requestMethod = "GET"
+        conn.setRequestProperty("x-device-key", deviceKey)
+        conn.connectTimeout = 8_000
+        conn.readTimeout = 8_000
+        val code = conn.responseCode
+        val body = (if (code in 200..299) conn.inputStream else conn.errorStream).bufferedReader().readText()
+        if (code !in 200..299) throw RuntimeException("Failed to fetch channels: HTTP $code")
+        val arr = org.json.JSONArray(body)
+        (0 until arr.length()).map { i ->
+            val obj = arr.getJSONObject(i)
+            Channel(obj.getString("id"), obj.getString("name"))
+        }
+    }
+
+    fun switchChannel(channelId: String, onStatus: (String) -> Unit) {
+        scope.launch {
+            try {
+                notify("Switching channel…")
+                withContext(Dispatchers.IO) {
+                    val conn = URL("$serverUrl/api/devices/self/channel").openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.setRequestProperty("x-device-key", deviceKey)
+                    conn.doOutput = true
+                    conn.connectTimeout = 8_000
+                    conn.readTimeout = 8_000
+                    conn.outputStream.write("""{"channelId":"$channelId"}""".toByteArray())
+                    conn.responseCode
+                    conn.disconnect()
+                }
+                room.disconnect()
+                connectToChannel()
+            } catch (e: Exception) {
+                notify("Switch failed: ${e.message}")
+            }
+        }
+    }
+
     fun setTransmitting(on: Boolean) {
         scope.launch {
             try { room.localParticipant.setMicrophoneEnabled(on) } catch (_: Exception) {}

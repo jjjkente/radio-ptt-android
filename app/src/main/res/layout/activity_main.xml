@@ -12,8 +12,22 @@
         android:layout_height="wrap_content"
         android:textSize="16sp"
         android:gravity="center"
-        android:layout_marginBottom="32dp"
+        android:layout_marginBottom="24dp"
         android:text="@string/status_initializing" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Channel"
+        android:textSize="12sp"
+        android:textColor="#888888"
+        android:layout_marginBottom="4dp" />
+
+    <Spinner
+        android:id="@+id/channelSpinner"
+        android:layout_width="280dp"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="32dp" />
 
     <Button
         android:id="@+id/pttButton"
