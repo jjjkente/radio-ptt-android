@@ -74,6 +74,9 @@ class MainActivity : AppCompatActivity() {
         statusText = findViewById(R.id.statusText)
         channelSpinner = findViewById(R.id.channelSpinner)
         val pttButton = findViewById<Button>(R.id.pttButton)
+        val imeiLabel = findViewById<TextView>(R.id.imeiLabel)
+        val imei = ImeiHelper.read(this)
+        if (imei.isNotEmpty()) imeiLabel.text = "IMEI: $imei"
 
         channelListener = object : AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent: AdapterView<*>?) {}
@@ -134,6 +137,9 @@ class MainActivity : AppCompatActivity() {
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             needed.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.READ_PHONE_STATE)
         }
         if (needed.isEmpty()) {
             bindAndStart()

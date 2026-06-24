@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 
 class SettingsActivity : AppCompatActivity() {
@@ -15,19 +16,21 @@ class SettingsActivity : AppCompatActivity() {
 
         val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val editUrl = findViewById<EditText>(R.id.editServerUrl)
-        val editKey = findViewById<EditText>(R.id.editDeviceKey)
+        val textImei = findViewById<TextView>(R.id.textImei)
 
         editUrl.setText(prefs.getString(KEY_SERVER_URL, ""))
-        editKey.setText(prefs.getString(KEY_DEVICE_KEY, ""))
+
+        val imei = ImeiHelper.read(this)
+        textImei.text = imei.ifEmpty { "Unavailable — grant Phone permission and reopen" }
 
         findViewById<Button>(R.id.btnSave).setOnClickListener {
             var url = editUrl.text.toString().trim().trimEnd('/')
             if (url.isNotEmpty() && !url.startsWith("http://") && !url.startsWith("https://")) {
-                url = "http://$url"
+                url = "https://$url"
             }
             prefs.edit()
                 .putString(KEY_SERVER_URL, url)
-                .putString(KEY_DEVICE_KEY, editKey.text.toString().trim())
+                .putString(KEY_DEVICE_KEY, imei)
                 .apply()
             setResult(RESULT_OK)
             finish()

@@ -19,23 +19,33 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:inputType="textUri"
-        android:hint="http://192.168.69.222:5057"
-        android:layout_marginBottom="24dp" />
+        android:hint="https://poc.jjjk.com.au"
+        android:layout_marginBottom="32dp" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Device Key / IMEI"
+        android:text="This device's IMEI"
         android:textSize="14sp"
         android:textColor="#888888"
         android:layout_marginBottom="4dp" />
 
-    <EditText
-        android:id="@+id/editDeviceKey"
+    <TextView
+        android:id="@+id/textImei"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:inputType="textNoSuggestions"
-        android:hint="API key or IMEI printed on radio"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.05"
+        android:text="Reading…"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Enter this IMEI when registering the radio in the admin dashboard."
+        android:textSize="13sp"
+        android:textColor="#888888"
         android:layout_marginBottom="32dp" />
 
     <Button

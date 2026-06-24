@@ -13,7 +13,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 1
-        versionName = "0.10-roger-beep"
+        versionName = "0.11-imei-pairing"
     }
 
     buildTypes {
