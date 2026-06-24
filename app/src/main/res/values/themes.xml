@@ -10,11 +10,5 @@
         <item name="android:textColorSecondary">#94a3b8</item>
         <item name="android:textColorHint">#64748b</item>
         <item name="android:editTextColor">#f1f5f9</item>
-        <item name="android:spinnerStyle">@style/DarkSpinner</item>
-    </style>
-
-    <style name="DarkSpinner" parent="Widget.AppCompat.Spinner">
-        <item name="android:background">@android:drawable/btn_dropdown</item>
-        <item name="android:popupBackground">#1e293b</item>
     </style>
 </resources>
