@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">JJJK Radio PTT</string>
+    <string name="status_initializing">Initializing…</string>
+    <string name="ptt_button_label">HOLD TO TALK</string>
+</resources>
