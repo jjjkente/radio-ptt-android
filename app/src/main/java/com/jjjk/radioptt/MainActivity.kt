@@ -30,7 +30,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var channelSpinner: Spinner
     private var channels: List<PttService.Channel> = emptyList()
-    private var spinnerReady = false
+    private lateinit var channelListener: AdapterView.OnItemSelectedListener
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
@@ -75,17 +75,16 @@ class MainActivity : AppCompatActivity() {
         channelSpinner = findViewById(R.id.channelSpinner)
         val pttButton = findViewById<Button>(R.id.pttButton)
 
-        channelSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+        channelListener = object : AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent: AdapterView<*>?) {}
             override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                if (!spinnerReady) return
                 val selected = channels.getOrNull(position) ?: return
                 val service = pttService ?: return
-                // Skip if already on this channel — guards against spinner initialisation firing
                 if (selected.id == service.currentChannelId) return
                 pttService?.switchChannel(selected.id) { status -> runOnUiThread { statusText.text = status } }
             }
         }
+        // Listener is attached only after programmatic updates settle (see loadChannels)
 
         pttButton.setOnTouchListener { _, event ->
             when (event.action) {
@@ -167,13 +166,15 @@ class MainActivity : AppCompatActivity() {
                 channels = list
                 val adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, list.map { it.name })
                 adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-                spinnerReady = false
+                // Detach listener before programmatic changes so adapter/selection
+                // callbacks don't trigger a spurious channel switch.
+                channelSpinner.onItemSelectedListener = null
                 channelSpinner.adapter = adapter
                 val curId = pttService?.currentChannelId ?: ""
                 val idx = list.indexOfFirst { it.id == curId }
                 if (idx >= 0) channelSpinner.setSelection(idx)
-                // Defer spinnerReady so onItemSelected from adapter/selection set fires first
-                channelSpinner.post { spinnerReady = true }
+                // Reattach after the handler queue drains (setAdapter/setSelection post callbacks)
+                channelSpinner.post { channelSpinner.onItemSelectedListener = channelListener }
             } catch (_: Exception) {}
         }
     }
