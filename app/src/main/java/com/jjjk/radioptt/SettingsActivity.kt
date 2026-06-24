@@ -21,8 +21,12 @@ class SettingsActivity : AppCompatActivity() {
         editKey.setText(prefs.getString(KEY_DEVICE_KEY, ""))
 
         findViewById<Button>(R.id.btnSave).setOnClickListener {
+            var url = editUrl.text.toString().trim().trimEnd('/')
+            if (url.isNotEmpty() && !url.startsWith("http://") && !url.startsWith("https://")) {
+                url = "http://$url"
+            }
             prefs.edit()
-                .putString(KEY_SERVER_URL, editUrl.text.toString().trimEnd('/'))
+                .putString(KEY_SERVER_URL, url)
                 .putString(KEY_DEVICE_KEY, editKey.text.toString().trim())
                 .apply()
             setResult(RESULT_OK)
