@@ -14,6 +14,8 @@ import android.os.Looper
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.*
 import io.livekit.android.LiveKit
+import io.livekit.android.events.RoomEvent
+import io.livekit.android.events.collect
 import io.livekit.android.room.Room
 import kotlinx.coroutines.*
 import org.json.JSONObject
@@ -35,6 +37,8 @@ class PttService : Service() {
     private var statusCallback: ((String) -> Unit)? = null
     private var started = false
     var currentChannelId: String = ""
+    private var idleStatus = ""   // "DeviceName · ChannelName" — restored after TX/RX clears
+    private var transmitting = false
 
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -116,15 +120,21 @@ class PttService : Service() {
     }
 
     fun setTransmitting(on: Boolean) {
+        transmitting = on
         scope.launch {
             try {
                 room.localParticipant.setMicrophoneEnabled(on)
-                if (!on) {
-                    // Roger beep on PTT release — short chirp like a walkie-talkie channel-clear tone.
-                    val tg = ToneGenerator(AudioManager.STREAM_VOICE_CALL, 90)
-                    tg.startTone(ToneGenerator.TONE_PROP_BEEP, 160)
-                    delay(220)
-                    tg.release()
+                if (on) {
+                    notify("▶ TRANSMITTING")
+                } else {
+                    // Roger beep on PTT release.
+                    try {
+                        val tg = ToneGenerator(AudioManager.STREAM_VOICE_CALL, 90)
+                        tg.startTone(ToneGenerator.TONE_PROP_BEEP, 160)
+                        delay(220)
+                        tg.release()
+                    } catch (_: Exception) {}
+                    notify(idleStatus)
                 }
             } catch (e: Exception) {
                 notify("Mic error: ${e.message}")
@@ -138,16 +148,47 @@ class PttService : Service() {
                 notify("Connecting…")
                 val result = fetchToken()
                 currentChannelId = result.channelId
+                idleStatus = "${result.deviceName} · ${result.channelName}"
                 room.connect(url = result.livekitUrl, token = result.token)
-                // LiveKit's internal AudioSwitch resets speakerphone ~350ms after connect.
-                // Wait for it to settle, then force speaker output.
+                // LiveKit's AudioSwitch resets speakerphone ~350ms after connect.
+                // Wait for it to settle then force speaker + max voice volume.
                 delay(600)
                 val am = getSystemService(AudioManager::class.java)
                 am.mode = AudioManager.MODE_IN_COMMUNICATION
                 am.isSpeakerphoneOn = true
-                notify("${result.deviceName} · ${result.channelName}")
+                am.setStreamVolume(
+                    AudioManager.STREAM_VOICE_CALL,
+                    am.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL),
+                    0
+                )
+                notify(idleStatus)
+                startRoomEventListener()
             } catch (e: Exception) {
                 notify("Failed: ${e.message}")
+            }
+        }
+    }
+
+    private fun startRoomEventListener() {
+        scope.launch {
+            room.events.collect { event ->
+                when (event) {
+                    is RoomEvent.ActiveSpeakersChanged -> {
+                        if (transmitting) return@collect  // don't clobber our own TX status
+                        val remoteSpeakers = event.speakers.filter {
+                            it.sid != room.localParticipant.sid
+                        }
+                        if (remoteSpeakers.isNotEmpty()) {
+                            val names = remoteSpeakers.joinToString(", ") {
+                                it.name?.ifBlank { null } ?: it.identity ?: "?"
+                            }
+                            notify("◀ $names")
+                        } else {
+                            notify(idleStatus)
+                        }
+                    }
+                    else -> {}
+                }
             }
         }
     }
