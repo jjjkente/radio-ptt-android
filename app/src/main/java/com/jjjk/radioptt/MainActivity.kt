@@ -1,33 +1,60 @@
 package com.jjjk.radioptt
 
 import android.Manifest
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.IBinder
 import android.view.KeyEvent
+import android.view.Menu
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.widget.Button
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
-import io.livekit.android.LiveKit
-import io.livekit.android.room.Room
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 class MainActivity : AppCompatActivity() {
 
-    private val serverUrl = "http://192.168.69.222:5057"
-    // Use the device IMEI (printed on the radio) — register it in the admin UI first.
-    private val deviceApiKey = "860433050133695"
-
-    private lateinit var room: Room
+    private var pttService: PttService? = null
+    private var serviceBound = false
     private lateinit var statusText: TextView
+
+    private val connection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+            pttService = (binder as PttService.PttBinder).getService()
+            serviceBound = true
+            startPtt()
+        }
+        override fun onServiceDisconnected(name: ComponentName) {
+            pttService = null
+            serviceBound = false
+        }
+    }
+
+    private val settingsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK && serviceBound) {
+            // Settings saved — reconnect with new values.
+            val (url, key) = loadPrefs()
+            pttService?.reconnect(url, key) { status -> runOnUiThread { statusText.text = status } }
+        }
+    }
+
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        if (grants[Manifest.permission.RECORD_AUDIO] == true) {
+            bindAndStart()
+        } else {
+            statusText.text = "Microphone permission required"
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,101 +63,92 @@ class MainActivity : AppCompatActivity() {
         statusText = findViewById(R.id.statusText)
         val pttButton = findViewById<Button>(R.id.pttButton)
 
-        room = LiveKit.create(applicationContext)
-
         pttButton.setOnTouchListener { _, event ->
             when (event.action) {
-                MotionEvent.ACTION_DOWN -> setTransmitting(true)
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> setTransmitting(false)
+                MotionEvent.ACTION_DOWN -> pttService?.setTransmitting(true)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> pttService?.setTransmitting(false)
             }
             true
         }
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            == PackageManager.PERMISSION_GRANTED
-        ) {
-            connectToChannel()
+        val (url, key) = loadPrefs()
+        if (url.isEmpty() || key.isEmpty()) {
+            // No config yet — open settings immediately.
+            settingsLauncher.launch(Intent(this, SettingsActivity::class.java))
         } else {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 1)
+            requestPermissionsAndStart()
         }
     }
 
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menu.add(0, MENU_SETTINGS, 0, "Settings")
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == MENU_SETTINGS) {
+            settingsLauncher.launch(Intent(this, SettingsActivity::class.java))
+            return true
+        }
+        return super.onOptionsItemSelected(item)
+    }
+
     // Hardware PTT side button on Inrico S200/T522A fires KEYCODE_LAST_CHANNEL (229, raw 0x0195).
-    // Intercept at Activity level so it works regardless of which view has focus.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_LAST_CHANNEL) {
             when (event.action) {
-                KeyEvent.ACTION_DOWN -> { setTransmitting(true); return true }
-                KeyEvent.ACTION_UP   -> { setTransmitting(false); return true }
+                KeyEvent.ACTION_DOWN -> { pttService?.setTransmitting(true); return true }
+                KeyEvent.ACTION_UP   -> { pttService?.setTransmitting(false); return true }
             }
         }
         return super.dispatchKeyEvent(event)
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray,
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            connectToChannel()
+    private fun requestPermissionsAndStart() {
+        val needed = mutableListOf<String>()
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.RECORD_AUDIO)
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        if (needed.isEmpty()) {
+            bindAndStart()
         } else {
-            statusText.text = "Microphone permission is required for PTT"
+            permissionLauncher.launch(needed.toTypedArray())
         }
     }
 
-    private fun connectToChannel() {
-        statusText.text = "Connecting..."
-        lifecycleScope.launch {
-            try {
-                val (token, livekitUrl, channelName) = fetchToken()
-                room.connect(url = livekitUrl, token = token)
-                statusText.text = "Connected — channel: $channelName"
-            } catch (err: Exception) {
-                statusText.text = "Connection failed: ${err.message}"
-            }
-        }
+    private fun bindAndStart() {
+        val intent = Intent(this, PttService::class.java)
+        ContextCompat.startForegroundService(this, intent)
+        bindService(intent, connection, Context.BIND_AUTO_CREATE)
     }
 
-    private fun setTransmitting(on: Boolean) {
-        lifecycleScope.launch {
-            try {
-                room.localParticipant.setMicrophoneEnabled(on)
-            } catch (err: Exception) {
-                statusText.text = "Mic error: ${err.message}"
-            }
-        }
+    private fun startPtt() {
+        val (url, key) = loadPrefs()
+        if (url.isEmpty() || key.isEmpty()) return
+        statusText.text = "Connecting…"
+        pttService?.start(url, key) { status -> runOnUiThread { statusText.text = status } }
     }
 
-    private data class TokenResponse(val token: String, val livekitUrl: String, val channelName: String)
-
-    private suspend fun fetchToken(): TokenResponse = withContext(Dispatchers.IO) {
-        val url = URL("$serverUrl/api/devices/token")
-        val conn = url.openConnection() as HttpURLConnection
-        conn.requestMethod = "POST"
-        conn.setRequestProperty("x-device-key", deviceApiKey)
-        conn.connectTimeout = 10_000
-        conn.readTimeout = 10_000
-
-        val code = conn.responseCode
-        val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
-            .bufferedReader().readText()
-        if (code !in 200..299) {
-            val error = JSONObject(body).optString("error", "HTTP $code")
-            throw RuntimeException(error)
-        }
-
-        val json = JSONObject(body)
-        TokenResponse(
-            token = json.getString("token"),
-            livekitUrl = json.getString("livekitUrl"),
-            channelName = json.getJSONObject("channel").getString("name"),
+    private fun loadPrefs(): Pair<String, String> {
+        val p = getSharedPreferences(SettingsActivity.PREFS, Context.MODE_PRIVATE)
+        return Pair(
+            p.getString(SettingsActivity.KEY_SERVER_URL, "") ?: "",
+            p.getString(SettingsActivity.KEY_DEVICE_KEY, "") ?: ""
         )
     }
 
     override fun onDestroy() {
-        room.disconnect()
+        if (serviceBound) {
+            unbindService(connection)
+            serviceBound = false
+        }
         super.onDestroy()
+    }
+
+    companion object {
+        private const val MENU_SETTINGS = 1
     }
 }

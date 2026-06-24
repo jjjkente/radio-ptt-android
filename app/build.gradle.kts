@@ -13,7 +13,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 1
-        versionName = "0.1-phase1"
+        versionName = "0.3-phase3"
     }
 
     buildTypes {
@@ -33,8 +33,8 @@ android {
 }
 
 dependencies {
-    // LiveKit's official Android SDK — check for a newer release before building.
     implementation("io.livekit:livekit-android:2.10.0")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.3")
