@@ -47,10 +47,13 @@ class MainActivity : AppCompatActivity() {
     private val settingsLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == RESULT_OK && serviceBound) {
-            // Settings saved — reconnect with new values.
+        if (result.resultCode == RESULT_OK) {
             val (url, key) = loadPrefs()
-            pttService?.reconnect(url, key) { status -> runOnUiThread { statusText.text = status } }
+            if (serviceBound) {
+                pttService?.reconnect(url, key) { status -> runOnUiThread { statusText.text = status } }
+            } else {
+                requestPermissionsAndStart()
+            }
         }
     }
 
