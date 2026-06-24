@@ -180,7 +180,7 @@ class PttService : Service() {
                         }
                         if (remoteSpeakers.isNotEmpty()) {
                             val names = remoteSpeakers.joinToString(", ") {
-                                it.name?.ifBlank { null } ?: it.identity ?: "?"
+                                it.name?.takeIf(String::isNotBlank) ?: it.identity ?: "?"
                             }
                             notify("◀ $names")
                         } else {
