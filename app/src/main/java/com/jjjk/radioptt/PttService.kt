@@ -173,19 +173,18 @@ class PttService : Service() {
         scope.launch {
             room.events.collect { event ->
                 when (event) {
-                    is RoomEvent.ActiveSpeakersChanged -> {
-                        if (transmitting) return@collect  // don't clobber our own TX status
-                        val remoteSpeakers = event.speakers.filter {
-                            it.sid != room.localParticipant.sid
-                        }
-                        if (remoteSpeakers.isNotEmpty()) {
-                            val names = remoteSpeakers.joinToString(", ") { p ->
-                            (p.name?.takeIf { it.isNotBlank() } ?: p.identity ?: "?").toString()
-                        }
-                            notify("◀ $names")
-                        } else {
-                            notify(idleStatus)
-                        }
+                    is RoomEvent.TrackUnmuted -> {
+                        val p = event.participant
+                        if (p.sid == room.localParticipant.sid) return@collect
+                        if (transmitting) return@collect
+                        val name = (p.name?.takeIf { it.isNotBlank() } ?: p.identity ?: "?").toString()
+                        notify("◀ $name")
+                    }
+                    is RoomEvent.TrackMuted -> {
+                        val p = event.participant
+                        if (p.sid == room.localParticipant.sid) return@collect
+                        if (transmitting) return@collect
+                        notify(idleStatus)
                     }
                     else -> {}
                 }
