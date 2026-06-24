@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Binder
 import android.os.IBinder
 import android.os.Looper
@@ -118,6 +119,13 @@ class PttService : Service() {
         scope.launch {
             try {
                 room.localParticipant.setMicrophoneEnabled(on)
+                if (!on) {
+                    // Roger beep on PTT release — short chirp like a walkie-talkie channel-clear tone.
+                    val tg = ToneGenerator(AudioManager.STREAM_VOICE_CALL, 90)
+                    tg.startTone(ToneGenerator.TONE_PROP_BEEP, 160)
+                    delay(220)
+                    tg.release()
+                }
             } catch (e: Exception) {
                 notify("Mic error: ${e.message}")
             }
