@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.media.AudioManager
 import android.os.Binder
 import android.os.IBinder
 import android.os.Looper
@@ -114,7 +115,11 @@ class PttService : Service() {
 
     fun setTransmitting(on: Boolean) {
         scope.launch {
-            try { room.localParticipant.setMicrophoneEnabled(on) } catch (_: Exception) {}
+            try {
+                room.localParticipant.setMicrophoneEnabled(on)
+            } catch (e: Exception) {
+                notify("Mic error: ${e.message}")
+            }
         }
     }
 
@@ -122,9 +127,15 @@ class PttService : Service() {
         scope.launch {
             try {
                 notify("Connecting…")
-                val (token, livekitUrl, channelName) = fetchToken()
+                val (token, livekitUrl, deviceName, channelName) = fetchToken()
+                // Route audio to loudspeaker, not earpiece.
+                val am = getSystemService(AudioManager::class.java)
+                am.mode = AudioManager.MODE_IN_COMMUNICATION
+                am.isSpeakerphoneOn = true
                 room.connect(url = livekitUrl, token = token)
-                notify("Connected · $channelName")
+                // Start muted — only transmit while PTT is held.
+                room.localParticipant.setMicrophoneEnabled(false)
+                notify("$deviceName · $channelName")
             } catch (e: Exception) {
                 notify("Failed: ${e.message}")
             }
@@ -160,7 +171,9 @@ class PttService : Service() {
         } catch (_: Exception) {}
     }
 
-    private suspend fun fetchToken(): Triple<String, String, String> = withContext(Dispatchers.IO) {
+    data class TokenResult(val token: String, val livekitUrl: String, val deviceName: String, val channelName: String)
+
+    private suspend fun fetchToken(): TokenResult = withContext(Dispatchers.IO) {
         val conn = URL("$serverUrl/api/devices/token").openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
         conn.setRequestProperty("x-device-key", deviceKey)
@@ -170,7 +183,12 @@ class PttService : Service() {
         val body = (if (code in 200..299) conn.inputStream else conn.errorStream).bufferedReader().readText()
         if (code !in 200..299) throw RuntimeException(JSONObject(body).optString("error", "HTTP $code"))
         val json = JSONObject(body)
-        Triple(json.getString("token"), json.getString("livekitUrl"), json.getJSONObject("channel").getString("name"))
+        TokenResult(
+            token = json.getString("token"),
+            livekitUrl = json.getString("livekitUrl"),
+            deviceName = json.optString("deviceName", deviceKey),
+            channelName = json.getJSONObject("channel").getString("name"),
+        )
     }
 
     private fun createNotificationChannel() {
@@ -200,6 +218,9 @@ class PttService : Service() {
         fusedLocation.removeLocationUpdates(locationCallback)
         scope.cancel()
         room.disconnect()
+        val am = getSystemService(AudioManager::class.java)
+        am.isSpeakerphoneOn = false
+        am.mode = AudioManager.MODE_NORMAL
         super.onDestroy()
     }
 
