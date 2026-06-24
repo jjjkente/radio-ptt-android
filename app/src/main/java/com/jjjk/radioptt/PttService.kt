@@ -179,9 +179,9 @@ class PttService : Service() {
                             it.sid != room.localParticipant.sid
                         }
                         if (remoteSpeakers.isNotEmpty()) {
-                            val names = remoteSpeakers.joinToString(", ") {
-                                it.name?.takeIf(String::isNotBlank) ?: it.identity ?: "?"
-                            }
+                            val names = remoteSpeakers.joinToString(", ") { p ->
+                            (p.name?.takeIf { it.isNotBlank() } ?: p.identity ?: "?").toString()
+                        }
                             notify("◀ $names")
                         } else {
                             notify(idleStatus)
