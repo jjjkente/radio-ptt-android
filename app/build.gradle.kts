@@ -12,8 +12,8 @@ android {
         // These radios commonly ship Android 9-11; keep the floor low.
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "0.18-direct-rec"
+        versionCode = 9
+        versionName = "0.19-gps-fix"
     }
 
     buildTypes {

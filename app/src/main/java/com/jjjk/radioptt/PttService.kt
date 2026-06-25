@@ -332,12 +332,18 @@ class PttService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun startLocationReporting() {
-        val req = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 30_000L)
-            .setMinUpdateIntervalMillis(15_000L)
-            .build()
         try {
+            // Post last-known location immediately so the map shows something without waiting 30s
+            fusedLocation.lastLocation.addOnSuccessListener { loc ->
+                if (loc != null) scope.launch(Dispatchers.IO) {
+                    postLocation(loc.latitude, loc.longitude, loc.accuracy)
+                }
+            }
+            val req = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 30_000L)
+                .setMinUpdateIntervalMillis(15_000L)
+                .build()
             fusedLocation.requestLocationUpdates(req, locationCallback, Looper.getMainLooper())
-        } catch (_: SecurityException) {}
+        } catch (_: Exception) {}
     }
 
     private fun postLocation(lat: Double, lon: Double, accuracy: Float) {
