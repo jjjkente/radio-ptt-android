@@ -27,6 +27,7 @@ import io.livekit.android.LiveKit
 import io.livekit.android.events.RoomEvent
 import io.livekit.android.events.collect
 import io.livekit.android.room.Room
+import io.livekit.android.room.track.Track
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -180,7 +181,12 @@ class PttService : Service(), TextToSpeech.OnInitListener {
                 room.localParticipant.setMicrophoneEnabled(on)
                 if (on) {
                     notify("▶ TRANSMITTING")
+                    val trackSid = room.localParticipant.getTrackPublication(Track.Source.MICROPHONE)?.sid
+                    if (!trackSid.isNullOrEmpty()) {
+                        launch(Dispatchers.IO) { postPttStart(currentChannelId, trackSid) }
+                    }
                 } else {
+                    launch(Dispatchers.IO) { postPttStop() }
                     playRogerBeep()
                     notify(idleStatus)
                 }
@@ -188,6 +194,36 @@ class PttService : Service(), TextToSpeech.OnInitListener {
                 notify("Mic error: ${e.message}")
             }
         }
+    }
+
+    private fun postPttStart(channelId: String, trackSid: String) {
+        try {
+            val conn = URL("$serverUrl/api/ptt/start").openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("x-device-key", deviceKey)
+            conn.doOutput = true
+            conn.connectTimeout = 5_000
+            conn.readTimeout = 5_000
+            conn.outputStream.write("""{"channelId":"$channelId","trackSid":"$trackSid"}""".toByteArray())
+            conn.responseCode
+            conn.disconnect()
+        } catch (_: Exception) {}
+    }
+
+    private fun postPttStop() {
+        try {
+            val conn = URL("$serverUrl/api/ptt/stop").openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("x-device-key", deviceKey)
+            conn.doOutput = true
+            conn.connectTimeout = 5_000
+            conn.readTimeout = 5_000
+            conn.outputStream.write("{}".toByteArray())
+            conn.responseCode
+            conn.disconnect()
+        } catch (_: Exception) {}
     }
 
     // Two-tone roger beep: 900 Hz then 1200 Hz, quiet. Same feel as Motorola but not harsh.
