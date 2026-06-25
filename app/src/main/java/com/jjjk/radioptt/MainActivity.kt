@@ -11,6 +11,7 @@ import android.graphics.drawable.GradientDrawable
 import android.media.MediaPlayer
 import android.os.Bundle
 import android.os.IBinder
+import android.util.Log
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
@@ -43,6 +44,7 @@ class MainActivity : AppCompatActivity() {
     private var replayUrls: List<String> = emptyList()
     private var replayIndex = 0
     private var mediaPlayer: MediaPlayer? = null
+    private var lastSecondaryPress = 0L
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
@@ -73,6 +75,8 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
         if (grants[Manifest.permission.RECORD_AUDIO] == true) {
+            // READ_PHONE_STATE may now be granted — re-run IMEI auto-config in case it was empty at onCreate
+            tryAutoConfigImei()
             bindAndStart()
         } else {
             updateStatus("Microphone permission required")
@@ -90,13 +94,8 @@ class MainActivity : AppCompatActivity() {
         val btnIdentify  = findViewById<Button>(R.id.btnIdentify)
         val btnReplay    = findViewById<Button>(R.id.btnReplay)
 
-        // Read IMEI once, use for both display and auto-config
-        val imei = ImeiHelper.read(this)
-        if (imei.isNotEmpty()) {
-            imeiLabel.text = "IMEI: $imei"
-            getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE).edit()
-                .putString(SettingsActivity.KEY_DEVICE_KEY, imei).apply()
-        }
+        // Read IMEI now (may be empty if READ_PHONE_STATE not yet granted; tryAutoConfigImei re-runs after grants)
+        tryAutoConfigImei()
 
         btnIdentify.setOnClickListener { pttService?.announceIdentity() }
 
@@ -152,6 +151,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     // Hardware PTT side button on Inrico S200/T522A fires KEYCODE_LAST_CHANNEL (229, raw 0x0195).
+    // Secondary side button (below PTT) keycode varies by firmware — we handle all likely candidates
+    // and log the actual code so we can lock it down after first use.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_LAST_CHANNEL) {
             when (event.action) {
@@ -159,8 +160,28 @@ class MainActivity : AppCompatActivity() {
                 KeyEvent.ACTION_UP   -> { pttService?.setTransmitting(false); return true }
             }
         }
+        if (event.action == KeyEvent.ACTION_UP && isSecondaryButton(event.keyCode)) {
+            Log.d(TAG, "Secondary button fired: keyCode=${event.keyCode} (${KeyEvent.keyCodeToString(event.keyCode)})")
+            val now = System.currentTimeMillis()
+            if (now - lastSecondaryPress < 2000) {
+                handleReplayPress()
+            } else {
+                pttService?.announceIdentity()
+            }
+            lastSecondaryPress = now
+            return true
+        }
         return super.dispatchKeyEvent(event)
     }
+
+    private fun isSecondaryButton(keyCode: Int): Boolean = keyCode in setOf(
+        KeyEvent.KEYCODE_CALL,                // 5  — common on Inrico monitor button
+        KeyEvent.KEYCODE_VOICE_ASSIST,        // 231 — raw mtk-kpd key 59
+        KeyEvent.KEYCODE_TV_DATA_SERVICE,     // 235 — raw mtk-kpd key 60
+        KeyEvent.KEYCODE_TV_RADIO_SERVICE,    // 236 — raw mtk-kpd key 61
+        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,    // 85
+        KeyEvent.KEYCODE_FOCUS,               // 80
+    )
 
     private fun requestPermissionsAndStart() {
         val needed = mutableListOf<String>()
@@ -232,6 +253,15 @@ class MainActivity : AppCompatActivity() {
             SettingsActivity.SERVER_URL,
             p.getString(SettingsActivity.KEY_DEVICE_KEY, "") ?: ""
         )
+    }
+
+    private fun tryAutoConfigImei() {
+        val imei = ImeiHelper.read(this)
+        if (imei.isNotEmpty()) {
+            findViewById<TextView>(R.id.imeiLabel).text = "IMEI: $imei"
+            getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE).edit()
+                .putString(SettingsActivity.KEY_DEVICE_KEY, imei).apply()
+        }
     }
 
     private fun updateStatus(text: String) {
@@ -306,5 +336,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val MENU_SETTINGS = 1
+        private const val TAG = "PTT_KEY"
     }
 }
