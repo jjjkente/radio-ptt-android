@@ -153,6 +153,11 @@ class MainActivity : AppCompatActivity() {
     // Secondary side button (below PTT) keycode varies by firmware — we handle all likely candidates
     // and log the actual code so we can lock it down after first use.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Broad key logger — remove once secondary button keycode is confirmed
+        if (event.keyCode != KeyEvent.KEYCODE_LAST_CHANNEL && event.keyCode != KeyEvent.KEYCODE_VOLUME_UP
+            && event.keyCode != KeyEvent.KEYCODE_VOLUME_DOWN && event.keyCode != KeyEvent.KEYCODE_BACK) {
+            Log.d(TAG, "HWKey code=${event.keyCode} (${KeyEvent.keyCodeToString(event.keyCode)}) action=${event.action}")
+        }
         if (event.keyCode == KeyEvent.KEYCODE_LAST_CHANNEL) {
             when (event.action) {
                 KeyEvent.ACTION_DOWN -> { pttService?.setTransmitting(true); return true }
