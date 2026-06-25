@@ -11,7 +11,6 @@ import android.graphics.drawable.GradientDrawable
 import android.media.MediaPlayer
 import android.os.Bundle
 import android.os.IBinder
-import android.util.Log
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
@@ -149,23 +148,17 @@ class MainActivity : AppCompatActivity() {
         return super.onOptionsItemSelected(item)
     }
 
-    // Hardware PTT side button on Inrico S200/T522A fires KEYCODE_LAST_CHANNEL (229, raw 0x0195).
-    // Secondary side button (below PTT) keycode varies by firmware — we handle all likely candidates
-    // and log the actual code so we can lock it down after first use.
+    // PTT main side button: KEYCODE_LAST_CHANNEL (229, raw Linux scancode 0x195).
+    // Secondary side button (below PTT on S200): KEYCODE_TV_RADIO_SERVICE (236, raw Linux scancode 61 / KEY_F3).
+    // Single press = Who Am I; double-press within 2s = Replay.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        // Broad key logger — remove once secondary button keycode is confirmed
-        if (event.keyCode != KeyEvent.KEYCODE_LAST_CHANNEL && event.keyCode != KeyEvent.KEYCODE_VOLUME_UP
-            && event.keyCode != KeyEvent.KEYCODE_VOLUME_DOWN && event.keyCode != KeyEvent.KEYCODE_BACK) {
-            Log.d(TAG, "HWKey code=${event.keyCode} (${KeyEvent.keyCodeToString(event.keyCode)}) action=${event.action}")
-        }
         if (event.keyCode == KeyEvent.KEYCODE_LAST_CHANNEL) {
             when (event.action) {
                 KeyEvent.ACTION_DOWN -> { pttService?.setTransmitting(true); return true }
                 KeyEvent.ACTION_UP   -> { pttService?.setTransmitting(false); return true }
             }
         }
-        if (event.action == KeyEvent.ACTION_UP && isSecondaryButton(event.keyCode)) {
-            Log.d(TAG, "Secondary button fired: keyCode=${event.keyCode} (${KeyEvent.keyCodeToString(event.keyCode)})")
+        if (event.action == KeyEvent.ACTION_UP && event.keyCode == KeyEvent.KEYCODE_TV_RADIO_SERVICE) {
             val now = System.currentTimeMillis()
             if (now - lastSecondaryPress < 2000) {
                 handleReplayPress()
@@ -177,15 +170,6 @@ class MainActivity : AppCompatActivity() {
         }
         return super.dispatchKeyEvent(event)
     }
-
-    private fun isSecondaryButton(keyCode: Int): Boolean = keyCode in setOf(
-        KeyEvent.KEYCODE_CALL,                // 5  — common on Inrico monitor button
-        KeyEvent.KEYCODE_VOICE_ASSIST,        // 231 — raw mtk-kpd key 59
-        KeyEvent.KEYCODE_TV_DATA_SERVICE,     // 235 — raw mtk-kpd key 60
-        KeyEvent.KEYCODE_TV_RADIO_SERVICE,    // 236 — raw mtk-kpd key 61
-        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,    // 85
-        KeyEvent.KEYCODE_FOCUS,               // 80
-    )
 
     private fun requestPermissionsAndStart() {
         val needed = mutableListOf<String>()
@@ -340,6 +324,5 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val MENU_SETTINGS = 1
-        private const val TAG = "PTT_KEY"
     }
 }
