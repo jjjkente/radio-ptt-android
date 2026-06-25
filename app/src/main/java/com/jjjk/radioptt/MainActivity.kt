@@ -108,9 +108,17 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
-        val (url, key) = loadPrefs()
-        if (url.isEmpty() || key.isEmpty()) {
-            // No config yet — open settings immediately.
+        // Auto-configure: save IMEI into prefs so the radio self-registers its key.
+        val imei = ImeiHelper.read(this)
+        if (imei.isNotEmpty()) {
+            getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE).edit()
+                .putString(SettingsActivity.KEY_DEVICE_KEY, imei).apply()
+        }
+
+        val key = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE)
+            .getString(SettingsActivity.KEY_DEVICE_KEY, "") ?: ""
+        if (key.isEmpty()) {
+            // IMEI unavailable — open info screen so user can see the issue.
             settingsLauncher.launch(Intent(this, SettingsActivity::class.java))
         } else {
             requestPermissionsAndStart()
@@ -181,8 +189,8 @@ class MainActivity : AppCompatActivity() {
                 val list = service.fetchChannels()
                 if (list == channels) return@launch  // no change, skip redraw
                 channels = list
-                val adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, list.map { it.name })
-                adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                val adapter = ArrayAdapter(this@MainActivity, R.layout.spinner_item, list.map { it.name })
+                adapter.setDropDownViewResource(R.layout.spinner_dropdown_item)
                 // Detach listener before programmatic changes so adapter/selection
                 // callbacks don't trigger a spurious channel switch.
                 channelSpinner.onItemSelectedListener = null
@@ -208,7 +216,7 @@ class MainActivity : AppCompatActivity() {
     private fun loadPrefs(): Pair<String, String> {
         val p = getSharedPreferences(SettingsActivity.PREFS, Context.MODE_PRIVATE)
         return Pair(
-            p.getString(SettingsActivity.KEY_SERVER_URL, "") ?: "",
+            SettingsActivity.SERVER_URL,
             p.getString(SettingsActivity.KEY_DEVICE_KEY, "") ?: ""
         )
     }

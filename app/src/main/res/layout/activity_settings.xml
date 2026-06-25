@@ -3,43 +3,41 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="24dp"
+    android:padding="28dp"
     android:gravity="top"
     android:background="#0f172a">
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="SERVER URL"
-        android:textSize="10sp"
+        android:text="SERVER"
+        android:textSize="11sp"
         android:textColor="#64748b"
         android:letterSpacing="0.12"
-        android:layout_marginBottom="8dp" />
+        android:layout_marginBottom="6dp" />
 
-    <EditText
-        android:id="@+id/editServerUrl"
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:inputType="textUri"
-        android:hint="https://poc.jjjk.com.au"
+        android:text="poc.jjjk.com.au"
+        android:textSize="18sp"
         android:textColor="#f1f5f9"
-        android:textColorHint="#475569"
-        android:layout_marginBottom="32dp" />
+        android:layout_marginBottom="36dp" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="THIS DEVICE'S IMEI"
-        android:textSize="10sp"
+        android:textSize="11sp"
         android:textColor="#64748b"
         android:letterSpacing="0.12"
-        android:layout_marginBottom="8dp" />
+        android:layout_marginBottom="6dp" />
 
     <TextView
         android:id="@+id/textImei"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textSize="20sp"
+        android:textSize="22sp"
         android:textStyle="bold"
         android:textColor="#3b82f6"
         android:letterSpacing="0.05"
@@ -52,13 +50,13 @@
         android:text="Enter this IMEI when registering the radio in the admin dashboard."
         android:textSize="13sp"
         android:textColor="#64748b"
-        android:layout_marginBottom="40dp" />
+        android:layout_marginBottom="48dp" />
 
     <Button
         android:id="@+id/btnSave"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Save &amp; Connect"
+        android:text="Done"
         android:textColor="#ffffff"
         android:backgroundTint="#3b82f6" />
 

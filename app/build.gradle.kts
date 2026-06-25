@@ -12,8 +12,8 @@ android {
         // These radios commonly ship Android 9-11; keep the floor low.
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.12-dark-bloop"
+        versionCode = 3
+        versionName = "0.13-bigger-ui"
     }
 
     buildTypes {
