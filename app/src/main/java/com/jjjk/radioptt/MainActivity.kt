@@ -89,10 +89,9 @@ class MainActivity : AppCompatActivity() {
 
         statusText = findViewById(R.id.statusText)
         channelSpinner = findViewById(R.id.channelSpinner)
-        val pttButton    = findViewById<Button>(R.id.pttButton)
-        val imeiLabel    = findViewById<TextView>(R.id.imeiLabel)
-        val btnIdentify  = findViewById<Button>(R.id.btnIdentify)
-        val btnReplay    = findViewById<Button>(R.id.btnReplay)
+        val pttButton   = findViewById<Button>(R.id.pttButton)
+        val btnIdentify = findViewById<Button>(R.id.btnIdentify)
+        val btnReplay   = findViewById<Button>(R.id.btnReplay)
 
         // Read IMEI now (may be empty if READ_PHONE_STATE not yet granted; tryAutoConfigImei re-runs after grants)
         tryAutoConfigImei()
