@@ -12,8 +12,8 @@ android {
         // These radios commonly ship Android 9-11; keep the floor low.
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.13-bigger-ui"
+        versionCode = 4
+        versionName = "0.14-voice-replay"
     }
 
     buildTypes {

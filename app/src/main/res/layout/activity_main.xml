@@ -7,13 +7,14 @@
     android:padding="24dp"
     android:background="#0f172a">
 
+    <!-- Status: green when connected, amber connecting, red error -->
     <TextView
         android:id="@+id/statusText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textSize="20sp"
         android:textStyle="bold"
-        android:textColor="#f1f5f9"
+        android:textColor="#94a3b8"
         android:gravity="center"
         android:layout_marginBottom="24dp"
         android:text="@string/status_initializing" />
@@ -32,7 +33,7 @@
         android:layout_width="300dp"
         android:layout_height="wrap_content"
         android:minHeight="56dp"
-        android:layout_marginBottom="36dp"
+        android:layout_marginBottom="28dp"
         android:popupBackground="#1e293b" />
 
     <Button
@@ -45,13 +46,42 @@
         android:elevation="6dp"
         android:text="@string/ptt_button_label" />
 
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="20dp">
+
+        <!-- Identify: announces radio name + channel via TTS -->
+        <Button
+            android:id="@+id/btnIdentify"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="12dp"
+            android:text="Who Am I?"
+            android:textSize="14sp"
+            android:textColor="#f1f5f9"
+            android:backgroundTint="#1e3a5f" />
+
+        <!-- Replay: cycles through last 5 received transmissions -->
+        <Button
+            android:id="@+id/btnReplay"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Replay"
+            android:textSize="14sp"
+            android:textColor="#f1f5f9"
+            android:backgroundTint="#1e3a5f" />
+
+    </LinearLayout>
+
     <TextView
         android:id="@+id/imeiLabel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:textSize="11sp"
         android:textColor="#475569"
-        android:layout_marginTop="36dp"
+        android:layout_marginTop="20dp"
         android:text="" />
 
 </LinearLayout>

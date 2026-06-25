@@ -8,6 +8,7 @@ import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.media.MediaPlayer
 import android.os.Bundle
 import android.os.IBinder
 import android.view.KeyEvent
@@ -19,11 +20,17 @@ import android.widget.Button
 import android.widget.Spinner
 import android.widget.AdapterView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MainActivity : AppCompatActivity() {
 
@@ -33,6 +40,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var channelSpinner: Spinner
     private var channels: List<PttService.Channel> = emptyList()
     private lateinit var channelListener: AdapterView.OnItemSelectedListener
+    private var replayUrls: List<String> = emptyList()
+    private var replayIndex = 0
+    private var mediaPlayer: MediaPlayer? = null
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
@@ -52,7 +62,7 @@ class MainActivity : AppCompatActivity() {
         if (result.resultCode == RESULT_OK) {
             val (url, key) = loadPrefs()
             if (serviceBound) {
-                pttService?.reconnect(url, key) { status -> runOnUiThread { statusText.text = status } }
+                pttService?.reconnect(url, key) { status -> runOnUiThread { updateStatus(status) } }
             } else {
                 requestPermissionsAndStart()
             }
@@ -65,7 +75,7 @@ class MainActivity : AppCompatActivity() {
         if (grants[Manifest.permission.RECORD_AUDIO] == true) {
             bindAndStart()
         } else {
-            statusText.text = "Microphone permission required"
+            updateStatus("Microphone permission required")
         }
     }
 
@@ -75,10 +85,22 @@ class MainActivity : AppCompatActivity() {
 
         statusText = findViewById(R.id.statusText)
         channelSpinner = findViewById(R.id.channelSpinner)
-        val pttButton = findViewById<Button>(R.id.pttButton)
-        val imeiLabel = findViewById<TextView>(R.id.imeiLabel)
+        val pttButton    = findViewById<Button>(R.id.pttButton)
+        val imeiLabel    = findViewById<TextView>(R.id.imeiLabel)
+        val btnIdentify  = findViewById<Button>(R.id.btnIdentify)
+        val btnReplay    = findViewById<Button>(R.id.btnReplay)
+
+        // Read IMEI once, use for both display and auto-config
         val imei = ImeiHelper.read(this)
-        if (imei.isNotEmpty()) imeiLabel.text = "IMEI: $imei"
+        if (imei.isNotEmpty()) {
+            imeiLabel.text = "IMEI: $imei"
+            getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE).edit()
+                .putString(SettingsActivity.KEY_DEVICE_KEY, imei).apply()
+        }
+
+        btnIdentify.setOnClickListener { pttService?.announceIdentity() }
+
+        btnReplay.setOnClickListener { handleReplayPress() }
 
         // Circular button — red at rest, green while transmitting
         pttButton.background = pttButtonDrawable("#c0392b")
@@ -89,10 +111,9 @@ class MainActivity : AppCompatActivity() {
                 val selected = channels.getOrNull(position) ?: return
                 val service = pttService ?: return
                 if (selected.id == service.currentChannelId) return
-                pttService?.switchChannel(selected.id) { status -> runOnUiThread { statusText.text = status } }
+                pttService?.switchChannel(selected.id) { status -> runOnUiThread { updateStatus(status) } }
             }
         }
-        // Listener is attached only after programmatic updates settle (see loadChannels)
 
         pttButton.setOnTouchListener { _, event ->
             when (event.action) {
@@ -108,17 +129,9 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
-        // Auto-configure: save IMEI into prefs so the radio self-registers its key.
-        val imei = ImeiHelper.read(this)
-        if (imei.isNotEmpty()) {
-            getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE).edit()
-                .putString(SettingsActivity.KEY_DEVICE_KEY, imei).apply()
-        }
-
         val key = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE)
             .getString(SettingsActivity.KEY_DEVICE_KEY, "") ?: ""
         if (key.isEmpty()) {
-            // IMEI unavailable — open info screen so user can see the issue.
             settingsLauncher.launch(Intent(this, SettingsActivity::class.java))
         } else {
             requestPermissionsAndStart()
@@ -176,8 +189,8 @@ class MainActivity : AppCompatActivity() {
     private fun startPtt() {
         val (url, key) = loadPrefs()
         if (url.isEmpty() || key.isEmpty()) return
-        statusText.text = "Connecting…"
-        pttService?.start(url, key) { status -> runOnUiThread { statusText.text = status } }
+        updateStatus("Connecting…")
+        pttService?.start(url, key) { status -> runOnUiThread { updateStatus(status) } }
         loadChannels()
         startChannelPolling()
     }
@@ -221,6 +234,59 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun updateStatus(text: String) {
+        statusText.text = text
+        val color = when {
+            text.contains(" · ") || text.contains("TRANSMITTING") || text.startsWith("◀") -> "#22c55e"
+            text.contains("Connecting") || text.contains("Switching") || text.contains("Starting") -> "#f59e0b"
+            text.contains("Failed") || text.contains("error") || text.contains("permission") ||
+                text.contains("No network") -> "#ef4444"
+            else -> "#94a3b8"
+        }
+        statusText.setTextColor(Color.parseColor(color))
+    }
+
+    private fun handleReplayPress() {
+        val (url, key) = loadPrefs()
+        val service = pttService ?: return
+        val channelId = service.currentChannelId
+        if (channelId.isEmpty()) {
+            Toast.makeText(this, "Not connected to a channel", Toast.LENGTH_SHORT).show()
+            return
+        }
+        lifecycleScope.launch {
+            try {
+                val recordings = withContext(Dispatchers.IO) {
+                    val conn = URL("$url/api/recordings/channel/$channelId").openConnection() as HttpURLConnection
+                    conn.setRequestProperty("x-device-key", key)
+                    conn.connectTimeout = 5_000
+                    conn.readTimeout = 5_000
+                    val code = conn.responseCode
+                    if (code == 404) return@withContext emptyList<String>()
+                    val body = conn.inputStream.bufferedReader().readText()
+                    val arr = JSONArray(body)
+                    (0 until arr.length()).map { arr.getJSONObject(it).getString("url") }
+                }
+                if (recordings.isEmpty()) {
+                    Toast.makeText(this@MainActivity, "No recordings yet", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                if (recordings != replayUrls) { replayUrls = recordings; replayIndex = 0 }
+                else replayIndex = (replayIndex + 1) % replayUrls.size.coerceAtMost(5)
+                val playUrl = replayUrls[replayIndex]
+                mediaPlayer?.release()
+                mediaPlayer = MediaPlayer().apply {
+                    setDataSource(playUrl)
+                    prepareAsync()
+                    setOnPreparedListener { start() }
+                    setOnErrorListener { _, _, _ -> false }
+                }
+            } catch (_: Exception) {
+                Toast.makeText(this@MainActivity, "Replay unavailable", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     private fun pttButtonDrawable(hex: String): GradientDrawable {
         return GradientDrawable().apply {
             shape = GradientDrawable.OVAL
@@ -229,6 +295,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        mediaPlayer?.release()
+        mediaPlayer = null
         if (serviceBound) {
             unbindService(connection)
             serviceBound = false

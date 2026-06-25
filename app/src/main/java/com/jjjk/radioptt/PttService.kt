@@ -5,11 +5,17 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import android.speech.tts.TextToSpeech
 import kotlin.math.PI
 import kotlin.math.sin
 import android.os.Binder
@@ -25,8 +31,9 @@ import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
 
-class PttService : Service() {
+class PttService : Service(), TextToSpeech.OnInitListener {
 
     inner class PttBinder : Binder() {
         fun getService() = this@PttService
@@ -43,6 +50,9 @@ class PttService : Service() {
     var currentChannelId: String = ""
     private var idleStatus = ""   // "DeviceName · ChannelName" — restored after TX/RX clears
     private var transmitting = false
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
+    private var networkLost = false
 
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -58,8 +68,48 @@ class PttService : Service() {
         super.onCreate()
         room = LiveKit.create(applicationContext)
         fusedLocation = LocationServices.getFusedLocationProviderClient(this)
+        tts = TextToSpeech(this, this)
+        registerNetworkCallback()
         createNotificationChannel()
         startForeground(NOTIF_ID, buildNotification("Starting…"))
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            tts?.language = Locale.US
+            ttsReady = true
+        }
+    }
+
+    fun speak(text: String) {
+        if (ttsReady) tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+    }
+
+    // Called from MainActivity identify button
+    fun announceIdentity() {
+        val parts = idleStatus.split(" · ")
+        val name = parts.getOrNull(0)?.trim() ?: "Unknown"
+        val channel = parts.getOrNull(1)?.trim() ?: "Unknown"
+        speak("$name. Active channel: $channel")
+    }
+
+    private fun registerNetworkCallback() {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val req = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build()
+        cm.registerNetworkCallback(req, object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                if (networkLost) {
+                    networkLost = false
+                    speak("Network restored. Reconnecting.")
+                }
+            }
+            override fun onLost(network: Network) {
+                networkLost = true
+                statusCallback?.invoke("No network connection")
+                speak("Warning. No network connection.")
+            }
+        })
     }
 
     fun start(serverUrl: String, deviceKey: String, onStatus: (String) -> Unit) {
@@ -140,12 +190,15 @@ class PttService : Service() {
         }
     }
 
-    // CB-style descending bloop: sweeps from 1050 Hz down to 600 Hz over 220 ms.
+    // Two-tone roger beep: 900 Hz then 1200 Hz, quiet. Same feel as Motorola but not harsh.
     private fun playRogerBeep() {
         scope.launch(Dispatchers.IO) {
             try {
-                val rate = 44100
-                val pcm  = synthSweep(1050.0, 600.0, 0.220, rate, 0.30)
+                val rate  = 44100
+                val tone1 = synthTone(900.0,  0.085, rate, 0.18)
+                val gap   = ShortArray((rate * 0.025).toInt())
+                val tone2 = synthTone(1200.0, 0.085, rate, 0.18)
+                val pcm   = tone1 + gap + tone2
                 val track = AudioTrack.Builder()
                     .setAudioAttributes(
                         AudioAttributes.Builder()
@@ -165,26 +218,23 @@ class PttService : Service() {
                     .build()
                 track.write(pcm, 0, pcm.size)
                 track.play()
-                delay(300)
+                delay(250)
                 track.stop()
                 track.release()
             } catch (_: Exception) {}
         }
     }
 
-    // Linear frequency chirp with phase-accurate accumulation and 15 ms fade-in/out.
-    private fun synthSweep(f0: Double, f1: Double, durSec: Double, rate: Int, amp: Double): ShortArray {
+    private fun synthTone(freq: Double, durSec: Double, rate: Int, amp: Double): ShortArray {
         val n    = (rate * durSec).toInt()
-        val fade = (rate * 0.015).toInt()
+        val fade = (rate * 0.010).toInt()
         return ShortArray(n) { i ->
-            val t     = i.toDouble() / rate
-            val phase = 2.0 * PI * (f0 * t + (f1 - f0) * t * t / (2.0 * durSec))
-            val env   = when {
+            val env = when {
                 i < fade     -> i.toDouble() / fade
                 i > n - fade -> (n - i).toDouble() / fade
                 else         -> 1.0
             }
-            (sin(phase) * 32767 * amp * env).toInt().toShort()
+            (sin(2.0 * PI * freq * i / rate) * 32767 * amp * env).toInt().toShort()
         }
     }
 
@@ -208,9 +258,11 @@ class PttService : Service() {
                     0
                 )
                 notify(idleStatus)
+                speak("Connected. ${result.channelName}")
                 startRoomEventListener()
             } catch (e: Exception) {
                 notify("Failed: ${e.message}")
+                speak("Connection failed.")
             }
         }
     }
@@ -319,6 +371,9 @@ class PttService : Service() {
         val am = getSystemService(AudioManager::class.java)
         am.isSpeakerphoneOn = false
         am.mode = AudioManager.MODE_NORMAL
+        tts?.stop()
+        tts?.shutdown()
+        tts = null
         super.onDestroy()
     }
 
