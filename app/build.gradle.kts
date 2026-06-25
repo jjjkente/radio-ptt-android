@@ -12,8 +12,8 @@ android {
         // These radios commonly ship Android 9-11; keep the floor low.
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "0.16-hw-button-final"
+        versionCode = 7
+        versionName = "0.17-b1-replay-b2-whoami"
     }
 
     buildTypes {

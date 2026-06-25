@@ -43,7 +43,6 @@ class MainActivity : AppCompatActivity() {
     private var replayUrls: List<String> = emptyList()
     private var replayIndex = 0
     private var mediaPlayer: MediaPlayer? = null
-    private var lastSecondaryPress = 0L
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
@@ -148,9 +147,10 @@ class MainActivity : AppCompatActivity() {
         return super.onOptionsItemSelected(item)
     }
 
-    // PTT main side button: KEYCODE_LAST_CHANNEL (229, raw Linux scancode 0x195).
-    // Secondary side button (below PTT on S200): KEYCODE_TV_RADIO_SERVICE (236, raw Linux scancode 61 / KEY_F3).
-    // Single press = Who Am I; double-press within 2s = Replay.
+    // S200 left-side button layout:
+    //   PTT → KEYCODE_LAST_CHANNEL (229)
+    //   B1  → KEYCODE_TV_DATA_SERVICE (235)  → Replay
+    //   B2  → KEYCODE_TV_RADIO_SERVICE (236) → Who Am I
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_LAST_CHANNEL) {
             when (event.action) {
@@ -158,15 +158,11 @@ class MainActivity : AppCompatActivity() {
                 KeyEvent.ACTION_UP   -> { pttService?.setTransmitting(false); return true }
             }
         }
-        if (event.action == KeyEvent.ACTION_UP && event.keyCode == KeyEvent.KEYCODE_TV_RADIO_SERVICE) {
-            val now = System.currentTimeMillis()
-            if (now - lastSecondaryPress < 2000) {
-                handleReplayPress()
-            } else {
-                pttService?.announceIdentity()
+        if (event.action == KeyEvent.ACTION_UP) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_TV_DATA_SERVICE  -> { handleReplayPress(); return true }
+                KeyEvent.KEYCODE_TV_RADIO_SERVICE -> { pttService?.announceIdentity(); return true }
             }
-            lastSecondaryPress = now
-            return true
         }
         return super.dispatchKeyEvent(event)
     }
